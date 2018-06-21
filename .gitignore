@@ -2,8 +2,9 @@
 ##########
 *.pyc
 *.png
+*.gif
 *ckpt*
-*events*
+events*
 
 
 # Mac
