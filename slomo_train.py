@@ -125,13 +125,14 @@ def train(dataset_objects):
       # perceptual loss
       phi_true = sess.run(vgg_mod.conv4_3, feed_dict={'vgg_mod.imgs': target})
       phi_pred = sess.run(vgg_mod.conv4_3, feed_dict={'vgg_mod.imgs': pred_img_t})
-      percept_loss = l2_loss(phi_true, phi_pred) / phi_true.shape[0]
-      total_loss += percept_loss
+      loss_percept = l2_loss(phi_true, phi_pred) / phi_true.shape[0]
+      total_loss += loss_percept
 
     # warping and smoothness losses
     loss_warping = l1_loss(image_0, approx_img_0) + l1_loss(image_1, approx_img_1)
     loss_smooth = l1_regularizer(flow_01) + l1_regularizer(flow_10)
 
+    total_loss += loss_warping + loss_smooth
 
     
     ### TODO: perform proper learning rate scheduling
