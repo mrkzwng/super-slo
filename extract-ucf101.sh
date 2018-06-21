@@ -35,7 +35,7 @@ NUM_FRAMES=$( ls -1 ${PREFIX}_*.png | sed 's/.*\([0-9]\{4\}\)\.png$/\1/' | tail 
 # been through some sort of pull-up, so there could be differences between n and n+2,
 # but n and n+1 would essentially be identical. See v_BoxingPunchingBag_g09_c02.avi
 # for an example.
-for X in `seq 1 $(( NUM_FRAMES - 2 ))`; do
+for X in `seq 1 $(( NUM_FRAMES - 8 ))`; do
     ln -s $( basename $( printf "%s_%04d.png" $PREFIX $(( X + 1 )) ) ) $( printf "%s_delayed1_%04d.png" $PREFIX $X )
     ln -s $( basename $( printf "%s_%04d.png" $PREFIX $(( X + 2 )) ) ) $( printf "%s_delayed2_%04d.png" $PREFIX $X )
 done    
@@ -52,6 +52,12 @@ join ${PREFIX}.d1.cut.psnr ${PREFIX}.d2.cut.psnr | sed 's/psnr_avg://g;s/n://;s/
                 printf "%s_%04d.png\n" $PREFIX $(( FRAMENO + 0 )) >> ${PREFIX}_frame1.tmp.txt
                 printf "%s_%04d.png\n" $PREFIX $(( FRAMENO + 1 )) >> ${PREFIX}_frame2.tmp.txt
                 printf "%s_%04d.png\n" $PREFIX $(( FRAMENO + 2 )) >> ${PREFIX}_frame3.tmp.txt
+                printf "%s_%04d.png\n" $PREFIX $(( FRAMENO + 3 )) >> ${PREFIX}_frame4.tmp.txt
+                printf "%s_%04d.png\n" $PREFIX $(( FRAMENO + 4 )) >> ${PREFIX}_frame5.tmp.txt
+                printf "%s_%04d.png\n" $PREFIX $(( FRAMENO + 5 )) >> ${PREFIX}_frame6.tmp.txt
+                printf "%s_%04d.png\n" $PREFIX $(( FRAMENO + 6 )) >> ${PREFIX}_frame7.tmp.txt
+                printf "%s_%04d.png\n" $PREFIX $(( FRAMENO + 7 )) >> ${PREFIX}_frame8.tmp.txt
+                printf "%s_%04d.png\n" $PREFIX $(( FRAMENO + 8 )) >> ${PREFIX}_frame9.tmp.txt
     fi
 done
 
