@@ -1,0 +1,18 @@
+# Python
+##########
+*.pyc
+*.png
+*ckpt*
+*events*
+
+
+# Mac
+##########
+.DS_Store
+
+# Checkpoints and Results
+./slomo_checkpoints/*
+./utils/vgg16/vgg16_weights.npz
+
+# Temp Files
+*~
