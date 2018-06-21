@@ -11,8 +11,8 @@
 .DS_Store
 
 # Checkpoints and Results
-./slomo_checkpoints/*
-./utils/vgg16/vgg16_weights.npz
+slomo_checkpoints/**
+utils/vgg16/vgg16_weights.npz
 
 # Temp Files
 *~
