@@ -32,30 +32,31 @@ tf.app.flags.DEFINE_string('train_dir', checkpoint,
                            """Directory where to write event logs """
                            """and checkpoint.""")
 tf.app.flags.DEFINE_string('train_image_dir', train_image_dir,
-               """Directory where to output images.""")
+                           """Directory where to output images.""")
 tf.app.flags.DEFINE_string('test_image_dir', test_image_dir,
-               """Directory where to output images.""")
+                           """Directory where to output images.""")
 tf.app.flags.DEFINE_string('subset', 'train',
                            """Either 'train' or 'validation'.""")
 tf.app.flags.DEFINE_string('pretrained_model_checkpoint_path', checkpoint,
-                           """If specified, restore this pretrained model """
+                           """If specified, restore this pretrained model"""
                            """before beginning any training.""")
 tf.app.flags.DEFINE_integer('max_steps', 10000000,
                             """Number of batches to run.""")
-tf.app.flags.DEFINE_integer('batch_size', 8, 'The number of samples in each batch.')
+tf.app.flags.DEFINE_integer('batch_size', 8, 
+                            'The number of samples in each batch.')
 tf.app.flags.DEFINE_float('initial_learning_rate', 0.001,
                           """Initial learning rate.""")
 # added regularization parameters
 tf.app.flags.DEFINE_float('lambda_reconstruction', 1.,
-            """Reconstruction loss parameter""")
+                           """Reconstruction loss parameter""")
 tf.app.flags.DEFINE_float('lambda_perceptual', 0.08, 
-            """Perceptual loss parameter""")
+                          """Perceptual loss parameter""")
 tf.app.flags.DEFINE_float('lambda_warping', 1., 
-            """Warping loss parameter""")
+                          """Warping loss parameter""")
 tf.app.flags.DEFINE_float('lambda_smoothness', 10,                                         
-            """Smoothness loss parameter""")
+                          """Smoothness loss parameter""")
 tf.app.flags.DEFINE_float('lambda_penalty', 10,
-            """Lagrangian penalty parameter for enforcing equality constraint""")
+                          """Lagrangian penalty parameter for constraint""")
 
 
 def _read_image(filename):
@@ -72,12 +73,15 @@ def train(dataset_objects):
     # read and shuffle images
     data_lists = [dataset_obj.read_data_list_file()
                   for dataset_obj in dataset_objects]
-    dataset_frames = [tf.data.Dataset.from_tensor_slices(tf.constant(data_list))
+    dataset_frames = [tf.data.Dataset.from_tensor_slices(
+                      tf.constant(data_list))
                       for data_list in data_lists]
-    dataset_frames = [frame.repeat().shuffle(buffer_size=int(1e7), seed=0).map(_read_image)
+    dataset_frames = [frame.repeat().shuffle(buffer_size=int(1e7), seed=0)\
+                      .map(_read_image)
                       for frame in dataset_frames]
     dataset_frames = [frame.prefetch(100) for frame in dataset_frames]
-    batch_frames = [frame.batch(FLAGS.batch_size).make_initializable_iterator()
+    batch_frames = [frame.batch(FLAGS.batch_size)\
+                    .make_initializable_iterator()
                     for frame in dataset_frames]
     
     # Create input and target placeholder.
@@ -97,8 +101,10 @@ def train(dataset_objects):
     # flow computation
     flow_01, flow_10 = computer.inference(input_placeholder)
 
-    interp_outputs = {'flow_t0': [], 'flow_t1': [], 'vis_mask_0': [], 'vis_mask_1': []}
-    image_0, image_1 = input_placeholder[:, :, :, :3], input_placeholder[:, :, :, 3:]
+    interp_outputs = {'flow_t0': [], 'flow_t1': [], 
+                      'vis_mask_0': [], 'vis_mask_1': []}
+    image_0, image_1 = input_placeholder[:, :, :, :3], \
+                            input_placeholder[:, :, :, 3:]
 
     total_loss = 0
     for idx, t in enumerate(np.arange(1.0/8, 1, 1.0/8)):
@@ -111,15 +117,22 @@ def train(dataset_objects):
       approx_img_1 = computer.warp(flow_01, image_0)
       
       # interpolate
-      interp_input = tf.concat([input_placeholder, approx_img_0, approx_img_1,
-                                flow_t0_hat, flow_t1_hat], axis=3)
-      flow_t0, flow_t1, vis_mask_0, vis_mask_1 = interpolater.inference(interp_input)
+      interp_input = tf.concat([input_placeholder, 
+                                approx_img_0, 
+                                approx_img_1,
+                                flow_t0_hat, 
+                                flow_t1_hat], axis=3)
+      flow_t0, flow_t1, vis_mask_0, vis_mask_1 = \
+                interpolater.inference(interp_input)
       z = (1-t) * vis_mask_0 + t * vis_mask_1
-      pred_img_t = (1 / z) * ((1-t) * vis_mask_0 * computer.warp(-flow_t0, image_0) 
-                               + t * vis_mask_1 * computer.warp(-flow_t1, image_1))
+      pred_img_t = (1 / z) * ((1-t) * vis_mask_0 
+                               * computer.warp(-flow_t0, image_0) 
+                               + t * vis_mask_1 
+                               * computer.warp(-flow_t1, image_1))
       # reconstruction loss
       target = target_placeholder[:, :, :, idx * 3: (idx + 1) * 3]
-      loss_recons = l1_loss(pred_img_t, target[:, :, :, :]) / FLAGS.batch_size
+      loss_recons = l1_loss(pred_img_t, target[:, :, :, :]) \
+                            / FLAGS.batch_size
       total_loss += FLAGS.lambda_reconstruction * loss_recons
 
       # perceptual loss
@@ -133,7 +146,8 @@ def train(dataset_objects):
       total_loss += FLAGS.lambda_penalty * loss_constraint
 
     # warping and smoothness losses
-    loss_warping = l1_loss(image_0, approx_img_0) + l1_loss(image_1, approx_img_1)
+    loss_warping = l1_loss(image_0, approx_img_0) \
+                        + l1_loss(image_1, approx_img_1)
     loss_smooth = l1_regularizer(flow_01) + l1_regularizer(flow_10)
 
     total_loss += FLAGS.lambda_warping * loss_warping \
@@ -144,8 +158,10 @@ def train(dataset_objects):
 
     # Create an optimizer that performs gradient descent.
     opt = tf.train.AdamOptimizer(learning_rate)
-    grads = opt.compute_gradients(total_loss)
-    update_op = opt.apply_gradients(grads)
+    update_op = slim.learning.create_train_op(total_loss, opt, 
+                        summarize_gradients=True)
+    # grads = opt.compute_gradients(total_loss)
+    # update_op = opt.apply_gradients(grads)
 
     # Create summaries
     summaries = tf.get_collection(tf.GraphKeys.SUMMARIES)
@@ -155,7 +171,6 @@ def train(dataset_objects):
     summaries.append(tf.summary.scalar('loss_constraint', loss_constraint))
     summaries.append(tf.summary.scalar('loss_warping', loss_warping))
     summaries.append(tf.summary.scalar('loss_smooth', loss_smooth))
-    summaries.append(tf.summary.histogram('grads', grads))
 
     # Create a saver.
     saver = tf.train.Saver(tf.global_variables())
@@ -165,7 +180,8 @@ def train(dataset_objects):
 
     # Restore checkpoint from file.
     if FLAGS.pretrained_model_checkpoint_path \
-        and tf.train.get_checkpoint_state(FLAGS.pretrained_model_checkpoint_path):
+        and tf.train.get_checkpoint_state(
+            FLAGS.pretrained_model_checkpoint_path):
       # sess = tf.Session()
       assert tf.gfile.Exists(FLAGS.pretrained_model_checkpoint_path)
       ckpt = tf.train.get_checkpoint_state(
@@ -174,13 +190,17 @@ def train(dataset_objects):
       restorer.restore(sess, ckpt.model_checkpoint_path)
       print('%s: Pre-trained model restored from %s' %
         (datetime.now(), ckpt.model_checkpoint_path))
-      sess.run([batch_frame1.initializer, batch_frame2.initializer, batch_frame3.initializer])
+      sess.run([batch_frame1.initializer, 
+                batch_frame2.initializer, 
+                batch_frame3.initializer])
     else:
       # Build an initialization operation to run below.
       print('No existing checkpoints.')
       init = tf.global_variables_initializer()
       # sess = tf.Session()
-      sess.run([init, batch_frame1.initializer, batch_frame2.initializer, batch_frame3.initializer])
+      sess.run([init, batch_frame1.initializer, 
+                batch_frame2.initializer, 
+                batch_frame3.initializer])
 
     # Summary Writter
     summary_writer = tf.summary.FileWriter(
