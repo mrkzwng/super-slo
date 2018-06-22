@@ -129,7 +129,7 @@ def train(dataset_objects):
       total_loss += FLAGS.lambda_perceptual * loss_percept
 
       # Lagrangian penalty to enforce constraint 
-      loss_constraint = l1_loss(vis_mask_0 + vis_mask_1 - 1)
+      loss_constraint = l1_regularizer(vis_mask_0 + vis_mask_1 - 1)
       total_loss += FLAGS.lambda_penalty * loss_constraint
 
     # warping and smoothness losses
