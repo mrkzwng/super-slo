@@ -90,6 +90,9 @@ def train(dataset_objects):
     sess = tf.Session()
 
     # nnets
+
+    ### TODO: Freeze vgg16 weights from training
+
     computer = SloMo_model(for_interpolation=False)
     interpolater = SloMo_model(for_interpolation=True)
     vgg_mod = vgg16(sess=sess)
