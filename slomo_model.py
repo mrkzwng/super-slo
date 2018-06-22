@@ -96,7 +96,8 @@ class SloMo_model(object):
     with slim.arg_scope(
       [slim.conv2d],
       activation_fn=tf.nn.leaky_relu,
-      weights_initializer=tf.truncated_normal_initializer(0.0, 0.01)):
+      weights_initializer=tf.truncated_normal_initializer(0.0, 0.01),
+      reuse=tf.AUTO_REUSE):
 
       with slim.arg_scope([slim.batch_norm], 
                           is_training = self.is_train, 
@@ -165,24 +166,24 @@ class SloMo_model(object):
     grid_x = tf.tile(grid_x, [FLAGS.batch_size, 1, 1])
     grid_y = tf.tile(grid_y, [FLAGS.batch_size, 1, 1])
 
-    flow = 0.5 * flow
+    # flow = 0.5 * flow
 
     coor_x_1 = grid_x + flow[:, :, :, 0]
     coor_y_1 = grid_y + flow[:, :, :, 1]
 
-    coor_x_2 = grid_x - flow[:, :, :, 0]
-    coor_y_2 = grid_y - flow[:, :, :, 1]    
+    # coor_x_2 = grid_x - flow[:, :, :, 0]
+    # coor_y_2 = grid_y - flow[:, :, :, 1]    
     
     output_1 = bilinear_interp(input_images[:, :, :, 0:3], coor_x_1, coor_y_1, 'interpolate')
-    output_2 = bilinear_interp(input_images[:, :, :, 3:6], coor_x_2, coor_y_2, 'interpolate')
+    # output_2 = bilinear_interp(input_images[:, :, :, 3:6], coor_x_2, coor_y_2, 'interpolate')
 
-    mask = 0.5 * (1.0 + mask)
+    mask = (1.0 + mask)
     mask = tf.tile(mask, [1, 1, 1, 3])
-    net = tf.multiply(mask, output_1) + tf.multiply(1.0 - mask, output_2)
+    net = tf.multiply(mask, output_1) \
+            # + tf.multiply(1.0 - mask, output_2)
 
     # for the correct loss function
     flow_motion = net_copy[:, :, :, 0:2]
     flow_mask = tf.expand_dims(net_copy[:, :, :, 2], 3)
-
-
-    return(net, flow_motion, flow_mask)
+    
+    return(net)

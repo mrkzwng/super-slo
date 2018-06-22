@@ -8,22 +8,6 @@ from __future__ import print_function
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
 import numpy as np
-from vgg16.vgg16 import vgg16
-
-
-def perceptual_loss(model, predictions, target):
-  """
-  perceptual loss via vgg16 conv4_3 features
-  """
-  pass
-
-
-def _vgg16_conv4_3(images, model):
-  """
-  outputs vgg16 conv4_3 features
-  """
-  net = vgg(images, weight_file, )
-
 
 
 def l1_charbonnier(values, epsilon):

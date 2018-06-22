@@ -18,16 +18,13 @@ from slomo_model import SloMo_model
 from utils.image_utils import imwrite
 from functools import partial
 import pdb
-from utils.vgg.vgg16 import vgg16
+from utils.vgg16.vgg16 import vgg16
 
 
 # directories
 train_image_dir = '../results/train/'
 test_image_dir = '../results/test/'
 checkpoint = './slomo_checkpoints'
-
-# hack due to version differences
-tf.data = dat
 
 # Define necessary FLAGS
 FLAGS = tf.app.flags.FLAGS
@@ -49,21 +46,25 @@ tf.app.flags.DEFINE_integer('batch_size', 8, 'The number of samples in each batc
 tf.app.flags.DEFINE_float('initial_learning_rate', 0.001,
                           """Initial learning rate.""")
 # added regularization parameters
-tf.app.flags.DEFINE_float('lambda_motion', 0.01, 
-            """Regularization term for motion components""")
-tf.app.flags.DEFINE_float('lambda_mask', 0.005, 
-            """Regularization term for time component""")
-tf.app.flags.DEFINE_float('epsilon', 0.001,                                         
-            """Charbonnier distance parameter""")
+tf.app.flags.DEFINE_float('lambda_reconstruction', 1.,
+            """Reconstruction loss parameter""")
+tf.app.flags.DEFINE_float('lambda_perceptual', 0.08, 
+            """Perceptual loss parameter""")
+tf.app.flags.DEFINE_float('lambda_warping', 1., 
+            """Warping loss parameter""")
+tf.app.flags.DEFINE_float('lambda_smoothness', 10,                                         
+            """Smoothness loss parameter""")
+tf.app.flags.DEFINE_float('lambda_penalty', 10,
+            """Lagrangian penalty parameter for enforcing equality constraint""")
 
 
 def _read_image(filename):
-  ### TODO: change images dimensions
   image_string = tf.read_file(filename)
   image_decoded = tf.image.decode_image(image_string, channels=3)
   image_decoded.set_shape([352, 352, 3])
 
   return tf.cast(image_decoded, dtype=tf.float32) / 127.5 - 1.0
+
 
 def train(dataset_objects):
   """Trains a model."""
@@ -73,7 +74,7 @@ def train(dataset_objects):
                   for dataset_obj in dataset_objects]
     dataset_frames = [tf.data.Dataset.from_tensor_slices(tf.constant(data_list))
                       for data_list in data_lists]
-    dataset_frames = [frame.repeat().shuffle(buffer_size=1e7, seed=0).map(_read_image)
+    dataset_frames = [frame.repeat().shuffle(buffer_size=int(1e7), seed=0).map(_read_image)
                       for frame in dataset_frames]
     dataset_frames = [frame.prefetch(100) for frame in dataset_frames]
     batch_frames = [frame.batch(FLAGS.batch_size).make_initializable_iterator()
@@ -88,10 +89,6 @@ def train(dataset_objects):
                                    axis=3)
     # sessions
     sess = tf.Session()
-
-    # nnets
-
-    ### TODO: Freeze vgg16 weights from training
 
     computer = SloMo_model(for_interpolation=False)
     interpolater = SloMo_model(for_interpolation=True)
@@ -118,27 +115,31 @@ def train(dataset_objects):
                                 flow_t0_hat, flow_t1_hat], axis=3)
       flow_t0, flow_t1, vis_mask_0, vis_mask_1 = interpolater.inference(interp_input)
       z = (1-t) * vis_mask_0 + t * vis_mask_1
-      pred_img_t = (1 / z) * ((1-t) * vis_mask_0 * computer.warp(image_0, flow_t0) 
-                               + t * vis_mask_1 * computer.warp(image_1, flow_t1))
+      pred_img_t = (1 / z) * ((1-t) * vis_mask_0 * computer.warp(-flow_t0, image_0) 
+                               + t * vis_mask_1 * computer.warp(-flow_t1, image_1))
       # reconstruction loss
-      target = tf.expand_dims(target_placeholder[idx, :, :, :], axis=0)
-      loss_recons = l1_loss(pred_img_t, target) / target.shape[0]
-      total_loss += loss_recons
+      target = target_placeholder[:, :, :, idx * 3: (idx + 1) * 3]
+      loss_recons = l1_loss(pred_img_t, target[:, :, :, :]) / FLAGS.batch_size
+      total_loss += FLAGS.lambda_reconstruction * loss_recons
 
       # perceptual loss
-      phi_true = sess.run(vgg_mod.conv4_3, feed_dict={'vgg_mod.imgs': target})
-      phi_pred = sess.run(vgg_mod.conv4_3, feed_dict={'vgg_mod.imgs': pred_img_t})
-      loss_percept = l2_loss(phi_true, phi_pred) / phi_true.shape[0]
-      total_loss += loss_percept
+      phi_true = vgg_mod.inference(target)
+      phi_pred = vgg_mod.inference(pred_img_t)
+      loss_percept = l2_loss(phi_true, phi_pred) / FLAGS.batch_size
+      total_loss += FLAGS.lambda_perceptual * loss_percept
+
+      # Lagrangian penalty to enforce constraint 
+      loss_constraint = l1_loss(vis_mask_0 + vis_mask_1 - 1)
+      total_loss += FLAGS.lambda_penalty * loss_constraint
 
     # warping and smoothness losses
     loss_warping = l1_loss(image_0, approx_img_0) + l1_loss(image_1, approx_img_1)
     loss_smooth = l1_regularizer(flow_01) + l1_regularizer(flow_10)
 
-    total_loss += loss_warping + loss_smooth
+    total_loss += FLAGS.lambda_warping * loss_warping \
+                    + FLAGS.lambda_smoothness * loss_smooth
 
-    
-    ### TODO: perform proper learning rate scheduling
+    ### TODO: try learning rate scheduling if needed
     learning_rate = FLAGS.initial_learning_rate
 
     # Create an optimizer that performs gradient descent.
@@ -149,15 +150,12 @@ def train(dataset_objects):
     # Create summaries
     summaries = tf.get_collection(tf.GraphKeys.SUMMARIES)
     summaries.append(tf.summary.scalar('total_loss', total_loss))
-    summaries.append(tf.summary.scalar('reproduction_loss', reproduction_loss))
-    summaries.append(tf.summary.scalar('downsample_128_loss', mod128_loss))
-    summaries.append(tf.summary.scalar('downsample_64_loss', mod64_loss))
-    # summaries.append(tf.summary.scalar('prior_loss', prior_loss))
-    summaries.append(tf.summary.image('Input Image (before)', input_placeholder[:, :, :, 0:3], 3))
-    summaries.append(tf.summary.image('Input Image (after)', input_placeholder[:, :, :, 3:6], 3))
-    summaries.append(tf.summary.image('Output Image', prediction, 3))
-    summaries.append(tf.summary.image('Target Image', target_placeholder, 3))
-    # summaries.append(tf.summary.image('Flow', flow, 3))
+    summaries.append(tf.summary.scalar('loss_recons', loss_recons))
+    summaries.append(tf.summary.scalar('loss_percept', loss_percept))
+    summaries.append(tf.summary.scalar('loss_constraint', loss_constraint))
+    summaries.append(tf.summary.scalar('loss_warping', loss_warping))
+    summaries.append(tf.summary.scalar('loss_smooth', loss_smooth))
+    summaries.append(tf.summary.histogram('grads', grads))
 
     # Create a saver.
     saver = tf.train.Saver(tf.global_variables())
