@@ -24,6 +24,11 @@ with zipfile.ZipFile(zipdir, 'r') as z:
         with open(new_path, 'wb') as f:
             print("Writing "+jpg_name+" to "+new_path)
             f.write(z.read(zip_path))
+            img = cv2.imread(new_path)
+            cx, cy = int(img.shape[0] / 2), int(img.shape[1] / 2)
+            img = img[cx - 176:cx + 176, cy - 176:cy + 176]
+            img = cv2.imwrite(new_path, img)
+
 # write .jpg paths to another file for loading
 print("Writing .jpg paths to "+listdir)
 parent_names = set([get_parent_name(name) for name in names])

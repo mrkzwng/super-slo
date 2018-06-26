@@ -28,14 +28,14 @@ def l1_loss(predictions, targets):
   Args:
   Returns:
   """
-  return(tf.reduce_sum(tf.abs(predictions - targets)))
+  return(tf.reduce_mean(tf.abs(predictions - targets)))
 
 
 def l1_regularizer(flow):
   '''
   implements L1 regularization for flow in R^[n x m]
   '''
-  l1_magnitude = tf.reduce_sum(tf.abs(flow))
+  l1_magnitude = tf.reduce_mean(tf.abs(flow))
 
   return(l1_magnitude)
 
@@ -45,7 +45,9 @@ def l2_loss(predictions, targets):
   Args:
   Returns:
   """
-  return(tf.reduce_sum(tf.square(predictions - targets)))
+  n_elems = tf.cast(tf.size(targets), tf.float32)
+
+  return(tf.sqrt(tf.reduce_sum(tf.square(predictions - targets))) / n_elems)
 
 
 def tv_loss():
