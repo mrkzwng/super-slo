@@ -9,12 +9,6 @@ from utils.geo_layer_utils import bilinear_interp
 from utils.geo_layer_utils import meshgrid
 
 
-### TODO:
-'''
-Looks like it's not a scoping issue; check
-looping decoders / encoders next
-'''
-
 FLAGS = tf.app.flags.FLAGS
 
 class Dumb(object):
@@ -81,7 +75,6 @@ class Dumb(object):
     upsamp = tf.image.resize_bilinear(inputs, 
                   [inputs.shape[1] * 2, inputs.shape[2] * 2])
     cat_inputs = tf.concat([upsamp, skip_inputs], axis=3)
-    cat_inputs = upsamp
     conv = slim.conv2d(cat_inputs,
                      out_channels,
                      kernel_size,
@@ -116,7 +109,7 @@ class Dumb(object):
       # encode
       layers = {}
       out_channels = 32
-      for layer_idx in range(1):
+      for layer_idx in range(6):
         if layer_idx == 0:
           kernel_size = [7, 7]
           layers['layer_' + str(layer_idx)] = \
@@ -132,25 +125,18 @@ class Dumb(object):
                inputs=layers['layer_' + str(layer_idx - 1)],
                out_channels=out_channels,
                kernel_size=kernel_size)
-
         out_channels = out_channels * 2 if out_channels < 512 else 512
 
-      layer = layers['layer_0']
+      layer = layers['layer_5']
 
-      # # decode
-      # for layer_idx in range(1):
-      #   layer = self._decode_layer(scope=self.mode + 'decoder_' + str(layer_idx) + '_',
-      #              inputs=layer, 
-      #              skip_inputs=layers['layer_'+str(layer_idx)],
-      #              out_channels=out_channels,
-      #              kernel_size=kernel_size)
-      #   out_channels = out_channels / 2 
-
-      # outputs = self._encode_layer(scope=self.mode + 'output',
-      #                   inputs=layer,
-      #                   out_channels=3,
-      #                   kernel_size=[3, 3],
-      #                   pool=False)
+      # decode
+      for layer_idx in range(5):
+        layer = self._decode_layer(scope=self.mode + 'decoder_' + str(layer_idx) + '_',
+                   inputs=layer, 
+                   skip_inputs=layers['layer_'+str(4 - layer_idx)],
+                   out_channels=out_channels,
+                   kernel_size=kernel_size)
+        out_channels = out_channels / 2 
 
       if self.for_interpolation:
         layer = slim.conv2d(layer, 8, [3, 3], 

@@ -139,28 +139,29 @@ class SloMo_model(object):
         out_channels = out_channels / 2 
 
       if self.for_interpolation:
-        layer = slim.conv2d(layer, 8, [3, 3], 
+        layer = slim.conv2d(layer, 6, [3, 3], 
                             stride=1, scope='interpolation_output')
-        flow_t0 = layer[:, :, :, :3]
-        flow_t1 = layer[:, :, :, 3:6]
-        vis_mask_0 = tf.expand_dims(layer[:, :, :, 6], axis=3)
-        vis_mask_1 = tf.expand_dims(layer[:, :, :, 7], axis=3)
+        flow_t0 = layer[:, :, :, :2]
+        flow_t1 = layer[:, :, :, 2:]
+        vis_mask_0 = tf.expand_dims(layer[:, :, :, 4], axis=3)
+        vis_mask_1 = tf.expand_dims(layer[:, :, :, 5], axis=3)
         outputs = (flow_t0, flow_t1, vis_mask_0, vis_mask_1)
       else:
-        layer = slim.conv2d(layer, 6, [3, 3], 
+        layer = slim.conv2d(layer, 4, [3, 3], 
                             stride=1, scope='computation_output')
-        flow_01 = layer[:, :, :, :3]
-        flow_10 = layer[:, :, :, 3:]
+        flow_01 = layer[:, :, :, :2]
+        flow_10 = layer[:, :, :, 2:]
         outputs = (flow_01, flow_10)
 
     return(outputs)
 
 
   def warp(self, net, input_images):
+
     net_copy = net
     
     flow = net[:, :, :, 0:2]
-    mask = tf.expand_dims(net[:, :, :, 2], 3)
+    # mask = tf.expand_dims(net[:, :, :, 2], 3)
 
     grid_x, grid_y = meshgrid(net.shape[1], net.shape[2])
     grid_x = tf.tile(grid_x, [FLAGS.batch_size, 1, 1])
@@ -177,13 +178,13 @@ class SloMo_model(object):
     output_1 = bilinear_interp(input_images[:, :, :, 0:3], coor_x_1, coor_y_1, 'interpolate')
     # output_2 = bilinear_interp(input_images[:, :, :, 3:6], coor_x_2, coor_y_2, 'interpolate')
 
-    mask = (1.0 + mask)
-    mask = tf.tile(mask, [1, 1, 1, 3])
-    net = tf.multiply(mask, output_1) \
+    # mask = (1.0 + mask)
+    # mask = tf.tile(mask, [1, 1, 1, 3])
+    # net = tf.multiply(mask, output_1) \
             # + tf.multiply(1.0 - mask, output_2)
 
     # for the correct loss function
-    flow_motion = net_copy[:, :, :, 0:2]
-    flow_mask = tf.expand_dims(net_copy[:, :, :, 2], 3)
+    # flow_motion = net_copy[:, :, :, 0:2]
+    # flow_mask = tf.expand_dims(net_copy[:, :, :, 2], 3)
     
-    return(net)
+    return(output_1)

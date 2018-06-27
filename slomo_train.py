@@ -43,7 +43,7 @@ tf.app.flags.DEFINE_integer('max_steps', 10000000,
                             """Number of batches to run.""")
 tf.app.flags.DEFINE_integer('batch_size', 1, 
                             'The number of samples in each batch.')
-tf.app.flags.DEFINE_float('initial_learning_rate', 1e-6,
+tf.app.flags.DEFINE_float('initial_learning_rate', 1e-5,
                           """Initial learning rate.""")
 # added regularization parameters
 tf.app.flags.DEFINE_float('lambda_reconstruction', 1.,
@@ -64,11 +64,6 @@ def _read_image(filename):
   image_decoded.set_shape([352, 352, 3])
 
   return tf.cast(image_decoded, dtype=tf.float32) / 127.5 - 1.0
-
-
-def has_complex(datum, tensor):
-
-  return(tensor.dtype == tf.complex(1., 1.).dtype)
 
 
 def train(dataset_objects):
@@ -105,15 +100,12 @@ def train(dataset_objects):
 
     # flow computation
     flow_01, flow_10 = computer.inference(input_placeholder)
-
-    interp_outputs = {'flow_t0': [], 'flow_t1': [], 
-                      'vis_mask_0': [], 'vis_mask_1': []}
     image_0, image_1 = input_placeholder[:, :, :, :3], \
                             input_placeholder[:, :, :, 3:]
 
     total_loss = 0
     pred_imgs_t = []
-    for idx, t in enumerate(np.arange(1.0/8, 1, 1.0/8)):
+    for idx, t in enumerate(np.arange(1.0/8, .999999, 1.0/8)):
       # intermediate flow approximation at t, f_t0_hat
       flow_t0_hat = t * (-(1-t) * flow_01 + t * flow_10)
       flow_t1_hat = (1-t) * ((1-t) * flow_01 - t * flow_10)
@@ -130,26 +122,25 @@ def train(dataset_objects):
                                 flow_t1_hat], axis=3)
       flow_t0, flow_t1, vis_mask_0, vis_mask_1 = \
                 interpolater.inference(interp_input)
-      z = (1-t) * vis_mask_0 + t * vis_mask_1
-      pred_img_t = (1 / z) * ((1-t) * vis_mask_0 
+      z = (1-t) * tf.abs(vis_mask_0) + t * tf.abs(vis_mask_1)
+      pred_img_t = (1 / z) * ((1-t) * tf.abs(vis_mask_0) 
                                * computer.warp(-flow_t0, image_0) 
-                               + t * vis_mask_1 
+                               + t * tf.abs(vis_mask_1) 
                                * computer.warp(-flow_t1, image_1))
       pred_imgs_t += [pred_img_t]
       # reconstruction loss
       target = target_placeholder[:, :, :, idx * 3: (idx + 1) * 3]
-      loss_recons = l1_loss(pred_img_t, target) \
-                            / FLAGS.batch_size
+      loss_recons = l1_loss(pred_img_t, target) 
       total_loss += FLAGS.lambda_reconstruction * loss_recons
 
       # perceptual loss
       phi_true = vgg_mod.inference(target)
       phi_pred = vgg_mod.inference(pred_img_t)
-      loss_percept = l2_loss(phi_true, phi_pred) / FLAGS.batch_size
+      loss_percept = l2_loss(phi_true, phi_pred) 
       total_loss += FLAGS.lambda_perceptual * loss_percept
 
       # Lagrangian penalty to enforce constraint 
-      loss_constraint = l1_regularizer(vis_mask_0 + vis_mask_1 - 1)
+      loss_constraint = l1_loss(tf.abs(vis_mask_0), 1 - tf.abs(vis_mask_1))
       total_loss += FLAGS.lambda_penalty * loss_constraint
 
     # warping and smoothness losses
@@ -167,8 +158,6 @@ def train(dataset_objects):
     opt = tf.train.AdamOptimizer(learning_rate)
     update_op = slim.learning.create_train_op(total_loss, opt, 
                         summarize_gradients=True)
-    # grads = opt.compute_gradients(total_loss)
-    # update_op = opt.apply_gradients(grads)
 
     # Create summaries
     summaries = tf.get_collection(tf.GraphKeys.SUMMARIES)
@@ -189,7 +178,6 @@ def train(dataset_objects):
     if FLAGS.pretrained_model_checkpoint_path \
         and tf.train.get_checkpoint_state(
             FLAGS.pretrained_model_checkpoint_path):
-      # sess = tf.Session()
       assert tf.gfile.Exists(FLAGS.pretrained_model_checkpoint_path)
       ckpt = tf.train.get_checkpoint_state(
                FLAGS.pretrained_model_checkpoint_path)
@@ -203,7 +191,6 @@ def train(dataset_objects):
       # Build an initialization operation to run below.
       print('No existing checkpoints.')
       init = tf.global_variables_initializer()
-      # sess = tf.Session()
       sess.run([init] + [batch_frame.initializer
                 for batch_frame in batch_frames])
 
@@ -219,7 +206,7 @@ def train(dataset_objects):
       batch_idx = step % epoch_num
       
       # Run single step update.
-      _, loss_value = sess.run([update_op, total_loss])
+      loss_value, __ = sess.run([total_loss, update_op])
       
       if batch_idx == 0:
         print('Epoch Number: %d' % int(step / epoch_num))
@@ -227,7 +214,7 @@ def train(dataset_objects):
       if step % 10 == 0:
         print("Loss at step %d: %f" % (step, loss_value))
 
-      if step % 10 == 0:
+      if step % 200 == 0:
         # Output Summary 
         summary_str = sess.run(summary_op)
         summary_writer.add_summary(summary_str, step)
@@ -235,12 +222,24 @@ def train(dataset_objects):
       if step % 500 in {0, 1, 2}:
         # Run a batch of images 
         prediction = tf.concat(pred_imgs_t, axis=3)
-        prediction_np, input_np, target_np = sess.run([prediction, 
-                                                       input_placeholder,
-                                                       target_placeholder])
+        prediction_np, input_np, target_np, comp_img1, comp_img2 \
+                        = sess.run([prediction, 
+                          input_placeholder,
+                          target_placeholder,
+                          approx_img_0,
+                          approx_img_1])
         input_1, input_2 = input_np[:, :, :, :3], input_np[:, :, :, 3:]
 
         for examp_idx in range(prediction_np.shape[0]):
+          file_name_comp1 = FLAGS.train_image_dir + 'comp_img0_out' + '_step' + str(step) \
+                                + '.png'
+          file_name_comp2 = FLAGS.train_image_dir + 'comp_img1_out' + '_step' + str(step) \
+                                + '.png'
+          imwrite(file_name_comp1, comp_img1[0, :, :, :])
+          imwrite(file_name_comp2, comp_img2[0, :, :, :])
+          imwrite(file_name_comp1.replace('out', 'gt'), input_1[0, :, :, :])
+          imwrite(file_name_comp2.replace('out', 'gt'), input_2[0, :, :, :])
+
           for inputs in ['out', 'gt']:
             file_name_input1 = FLAGS.train_image_dir + inputs + '_step' + str(step) \
                                   + '_frame0' + '.png'
@@ -248,6 +247,7 @@ def train(dataset_objects):
                                   + '_frame8' + '.png'
             imwrite(file_name_input1, input_1[0, :, :, :])
             imwrite(file_name_input2, input_2[0, :, :, :])
+            
           for frame_idx in range(int(prediction_np.shape[3] / 3)):
             file_name = FLAGS.train_image_dir + 'out' + '_step' + str(step) \
                             + '_frame' + str(frame_idx + 1) + '.png'
@@ -260,7 +260,7 @@ def train(dataset_objects):
                     target_np[examp_idx, :, :, frame_idx * 3:(frame_idx + 1) * 3])
 
       # Save checkpoint 
-      if step % 50 == 0 or (step +1) == FLAGS.max_steps:
+      if step % 200 == 0 or (step +1) == FLAGS.max_steps:
         checkpoint_path = os.path.join(FLAGS.train_dir, 'model.ckpt')
         saver.save(sess, checkpoint_path, global_step=step)
 
