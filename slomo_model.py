@@ -18,9 +18,10 @@ class SloMo_model(object):
     is_train {bool}
     """
     self.is_train = is_train
-    self.batch_norm_params = {'decay': 0.9997,
-                              'epsilon': 0.001,
-                              'is_training': self.is_train}
+    # no batch normalization in the paper
+    # self.batch_norm_params = {'decay': 0.9997,
+    #                           'epsilon': 0.001,
+    #                           'is_training': self.is_train}
     self.for_interpolation = for_interpolation
     self.mode = 'interpolater_' if for_interpolation else 'computer_'
 
@@ -39,6 +40,7 @@ class SloMo_model(object):
     an encoding layer
     """
     if pool:
+      # downsample
       avg_pool = slim.avg_pool2d(inputs, [2, 2], 
                                  scope=scope + 'pool')
       conv = slim.conv2d(avg_pool, 
@@ -72,8 +74,10 @@ class SloMo_model(object):
     """
     a decoding layer
     """
+    # upsample
     upsamp = tf.image.resize_bilinear(inputs, 
                   [inputs.shape[1] * 2, inputs.shape[2] * 2])
+    # skip connection
     cat_inputs = tf.concat([upsamp, skip_inputs], axis=3)
     conv = slim.conv2d(cat_inputs,
                      out_channels,
@@ -93,6 +97,7 @@ class SloMo_model(object):
     """
     graph definition
     """
+    # leaky ReLU for all activations
     with slim.arg_scope(
       [slim.conv2d],
       activation_fn=lambda x: tf.nn.leaky_relu(x, alpha=0.1),
@@ -109,6 +114,7 @@ class SloMo_model(object):
       # encode
       layers = {}
       out_channels = 32
+      # 5 downsampling blocks
       for layer_idx in range(6):
         if layer_idx == 0:
           kernel_size = [7, 7]
@@ -129,7 +135,7 @@ class SloMo_model(object):
 
       layer = layers['layer_5']
 
-      # decode
+      # 5 upsampling blocks with skip connections
       for layer_idx in range(5):
         layer = self._decode_layer(scope=self.mode + 'decoder_' + str(layer_idx) + '_',
                    inputs=layer, 
@@ -138,6 +144,7 @@ class SloMo_model(object):
                    kernel_size=kernel_size)
         out_channels = out_channels / 2 
 
+      # different outputs for the two U-Nets
       if self.for_interpolation:
         layer = slim.conv2d(layer, 6, [3, 3], 
                             stride=1, scope='interpolation_output')
@@ -155,7 +162,7 @@ class SloMo_model(object):
 
     return(outputs)
 
-
+  # the warp function
   def warp(self, net, input_images):
 
     net_copy = net
