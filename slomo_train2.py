@@ -19,13 +19,14 @@ from functools import partial
 import pdb
 from utils.vgg16.vgg16 import vgg16
 
-# GPU
-config = tf.ConfigProto(device_count={'GPU':0})
 
 # directories
-train_image_dir = '../results/train/iter_0/'
+train_image_dir = '../results/train/iter_2/'
 test_image_dir = '../results/test/'
-checkpoint = './slomo_checkpoints/iter_0'
+checkpoint = './slomo_checkpoints/iter_2'
+
+# seed for shuffling data
+seed = np.random.randint(low=1)
 
 # Define necessary FLAGS
 FLAGS = tf.app.flags.FLAGS
@@ -45,9 +46,9 @@ tf.app.flags.DEFINE_integer('max_steps', 10000000,
                             """Number of batches to run.""")
 
 # hyperparams are set to paper's recommendations except learning rate and batch_size
-tf.app.flags.DEFINE_integer('batch_size', 1, 
+tf.app.flags.DEFINE_integer('batch_size', 2, 
                             'The number of samples in each batch.')
-tf.app.flags.DEFINE_float('initial_learning_rate', 1e-5,
+tf.app.flags.DEFINE_float('initial_learning_rate', 1e-6,
                           """Initial learning rate.""")
 tf.app.flags.DEFINE_float('lambda_reconstruction', 1.,
                            """Reconstruction loss parameter""")
@@ -72,13 +73,14 @@ def _read_image(filename):
 def train(dataset_objects):
 
   with tf.Graph().as_default():
+
     # read and shuffle images
     data_lists = [dataset_obj.read_data_list_file()
                   for dataset_obj in dataset_objects]
     dataset_frames = [tf.data.Dataset.from_tensor_slices(
                       tf.constant(data_list))
                       for data_list in data_lists]
-    dataset_frames = [frame.repeat().shuffle(buffer_size=int(1e5), seed=1)\
+    dataset_frames = [frame.repeat().shuffle(buffer_size=int(1e6), seed=seed)\
                       .map(_read_image)
                       for frame in dataset_frames]
     dataset_frames = [frame.prefetch(100) for frame in dataset_frames]
@@ -94,9 +96,9 @@ def train(dataset_objects):
                                   axis=3)
     # the middle 7 frames for ground truth
     target_placeholder = tf.concat([frame.get_next() for frame
-                                    in batch_frames[1:8]],
-                                   axis=3)
-    
+                                  in batch_frames[1:8]],
+                                 axis=3)    
+      
     sess = tf.Session()
     # the first network
     computer = SloMo_model(for_interpolation=False)
@@ -207,57 +209,60 @@ def train(dataset_objects):
     for step in range(0, FLAGS.max_steps):
       batch_idx = step % epoch_num
       loss_value, __ = sess.run([total_loss, update_op])
-      
-      if batch_idx == 0:
-        print('Epoch Number: %d' % int(step / epoch_num))
-      
-      if step % 100 == 0:
-        print("Loss at step %d: %f" % (step, loss_value))
 
-      if step % 500 == 0:
-        # save summary
-        summary_str = sess.run(summary_op)
-        summary_writer.add_summary(summary_str, step)
-
-      if step % 4000 in {0, 1, 2}:
+      if step % 1000 in {0, 1, 2}:
         # get some intermediate results 
         prediction = tf.concat(pred_imgs_t, axis=3)
         prediction_np, input_np, target_np, comp_img1, comp_img2 \
-                        = sess.run([prediction, 
+                        = sess.run([
+                          prediction, 
                           input_placeholder,
                           target_placeholder,
                           approx_img_0,
                           approx_img_1])
         input_1, input_2 = input_np[:, :, :, :3], input_np[:, :, :, 3:]
 
-        for examp_idx in range(prediction_np.shape[0]):
-          file_name_comp1 = FLAGS.train_image_dir + 'comp_img0_out' + '_step' + str(step) \
-                                + '.png'
-          file_name_comp2 = FLAGS.train_image_dir + 'comp_img1_out' + '_step' + str(step) \
-                                + '.png'
-          imwrite(file_name_comp1, comp_img1[0, :, :, :])
-          imwrite(file_name_comp2, comp_img2[0, :, :, :])
-          imwrite(file_name_comp1.replace('out', 'gt'), input_1[0, :, :, :])
-          imwrite(file_name_comp2.replace('out', 'gt'), input_2[0, :, :, :])
+        file_name_comp1 = FLAGS.train_image_dir + 'comp_img0' + '_step' + str(step) \
+                              + '_out' + '.png'
+        file_name_comp2 = FLAGS.train_image_dir + 'comp_img1' + '_step' + str(step) \
+                              + '_out' + '.png'
+        imwrite(file_name_comp1, comp_img1[0, :, :, :])
+        imwrite(file_name_comp2, comp_img2[0, :, :, :])
+        imwrite(file_name_comp1.replace('out', 'gt'), input_1[0, :, :, :])
+        imwrite(file_name_comp2.replace('out', 'gt'), input_2[0, :, :, :])
 
-          for inputs in ['out', 'gt']:
-            file_name_input1 = FLAGS.train_image_dir + inputs + '_step' + str(step) \
-                                  + '_frame0' + '.png'
-            file_name_input2 = FLAGS.train_image_dir + inputs + '_step' + str(step) \
-                                  + '_frame8' + '.png'
-            imwrite(file_name_input1, input_1[0, :, :, :])
-            imwrite(file_name_input2, input_2[0, :, :, :])
-            
-          for frame_idx in range(int(prediction_np.shape[3] / 3)):
-            file_name = FLAGS.train_image_dir + 'out' + '_step' + str(step) \
-                            + '_frame' + str(frame_idx + 1) + '.png'
-            file_name_label = FLAGS.train_image_dir + 'gt' + '_step' + str(step) \
-                            + '_frame' + str(frame_idx + 1) + '.png'
+        for inputs in ['out', 'gt']:
+          file_name_input1 = FLAGS.train_image_dir + inputs + '_step' + str(step) \
+                                + '_frame0' + '.png'
+          file_name_input2 = FLAGS.train_image_dir + inputs + '_step' + str(step) \
+                                + '_frame8' + '.png'
+          imwrite(file_name_input1, input_1[0, :, :, :])
+          imwrite(file_name_input2, input_2[0, :, :, :])
+          
+        for frame_idx in range(int(prediction_np.shape[3] / 3)):
+          file_name = FLAGS.train_image_dir + 'out' + '_step' + str(step) \
+                          + '_frame' + str(frame_idx + 1) + '.png'
+          file_name_label = FLAGS.train_image_dir + 'gt' + '_step' + str(step) \
+                          + '_frame' + str(frame_idx + 1) + '.png'
 
-            imwrite(file_name, 
-                    prediction_np[examp_idx, :, :, frame_idx * 3:(frame_idx + 1) * 3])
-            imwrite(file_name_label, 
-                    target_np[examp_idx, :, :, frame_idx * 3:(frame_idx + 1) * 3])
+          imwrite(file_name, 
+                  prediction_np[0, :, :, frame_idx * 3:(frame_idx + 1) * 3])
+          imwrite(file_name_label, 
+                    target_np[0, :, :, frame_idx * 3:(frame_idx + 1) * 3])
+
+      batch_idx = step % epoch_num
+      loss_value, __ = sess.run([total_loss, update_op])
+      
+      if batch_idx == 0:
+        print('Epoch Number: %d' % int(step / epoch_num))
+      
+      if step % 10 == 0:
+        print("Loss at step %d: %f" % (step, loss_value))
+
+      if step % 200 == 0:
+        # save summary
+        summary_str = sess.run(summary_op)
+        summary_writer.add_summary(summary_str, step)
 
       # save model weights
       if step % 500 == 0 or (step +1) == FLAGS.max_steps:
@@ -374,9 +379,8 @@ if __name__ == '__main__':
                        for i in range(9)]
     dataset_objects = [dataset.Dataset(data_list_file=path)
                        for path in data_list_paths]
-
+    
     train(dataset_objects)
-
   
   elif FLAGS.subset == 'test':
     
