@@ -45,7 +45,7 @@ tf.app.flags.DEFINE_integer('max_steps', 10000000,
 # hyperparams are set to paper's recommendations except learning rate and batch_size
 tf.app.flags.DEFINE_integer('batch_size', 1, 
                             'The number of samples in each batch.')
-tf.app.flags.DEFINE_float('initial_learning_rate', 1e-5,
+tf.app.flags.DEFINE_float('initial_learning_rate', 1e-6,
                           """Initial learning rate.""")
 tf.app.flags.DEFINE_float('lambda_reconstruction', 1.,
                            """Reconstruction loss parameter""")
