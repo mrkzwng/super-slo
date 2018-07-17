@@ -44,10 +44,10 @@ class MotionDetector:
         """
         # HACK: divide by 2
         fps = cap.get(cv2.CAP_PROP_FPS) / 2
-        fourcc = cv2.VideoWriter_fourcc(*'XVID')
+        fourcc = cv2.VideoWriter_fourcc(*"DIB ")
         dims = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), \
                     int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        out = cv2.VideoWriter(filename=self.out_path + str(clip_idx) + '.avi',
+        out = cv2.VideoWriter(filename=self.out_path + str(clip_idx) + '.mp4',
                               fourcc=fourcc,
                               fps=fps,
                               frameSize=dims,
@@ -112,7 +112,7 @@ class MotionDetector:
                 # HACK: divide by 2
                 if np.isclose(cap.get(cv2.CAP_PROP_POS_FRAMES),
                               cap.get(cv2.CAP_PROP_FRAME_COUNT) / 2,
-                              atol=0.5, rtol=0.0):
+                              atol=0.51, rtol=0.0):
                     os._exit(0)
 
                 frame_idx += 1

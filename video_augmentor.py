@@ -9,8 +9,12 @@ class Video_Augmentor:
                        crop=True, zoom=2, reflect='both'):
         """
         args:
-        =out_path: output path of 
+        =out_path: output path of the .jpg frames and 
+            .txt file of file names
+        =shape: output shape of the .jpg frames
+        =frame_seq: number of frames per sequence
         =crop: whether to random crop
+        =
         """
         self.crop = crop
         self.zoom = zoom
